@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: nonbu-backend
+    runtime: docker
+    plan: free
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      # Neon connection string, e.g. postgresql://user:pass@host/db?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Google OAuth *Web* client ID (comma-separate to allow several)
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+      - key: ALLOWED_EMAILS
+        sync: false
