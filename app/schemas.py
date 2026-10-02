@@ -2,11 +2,16 @@ from datetime import date, datetime
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field, field_validator
 
 MealType = Literal["breakfast", "lunch", "dinner", "snack"]
 
 NonNegative = Field(default=None, ge=0)
+
+HOURS_PER_DAY = 24
+# The daily schedule always leaves at least an hour to fast and to eat.
+MIN_FAST_HOURS = 1
+MAX_FAST_HOURS = HOURS_PER_DAY - 1
 
 
 class ORMModel(BaseModel):
@@ -41,13 +46,19 @@ class GoalsOut(ORMModel):
     fat_g: float | None
     default_fast_hours: float
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def eating_window_hours(self) -> float:
+        """The rest of the day after the daily fast, e.g. 16h fasting -> 8h eating."""
+        return max(HOURS_PER_DAY - self.default_fast_hours, 0)
+
 
 class GoalsIn(BaseModel):
     daily_calories: float | None = NonNegative
     protein_g: float | None = NonNegative
     carbs_g: float | None = NonNegative
     fat_g: float | None = NonNegative
-    default_fast_hours: float | None = Field(default=None, gt=0, le=240)
+    default_fast_hours: float | None = Field(default=None, ge=MIN_FAST_HOURS, le=MAX_FAST_HOURS)
 
 
 class UserOut(ORMModel):

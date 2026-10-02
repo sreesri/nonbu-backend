@@ -81,6 +81,26 @@ async def test_patch_me(client):
     assert body["timezone"] == "Asia/Kolkata"
     assert body["goals"]["daily_calories"] == 1800
     assert body["goals"]["default_fast_hours"] == 18
+    assert body["goals"]["eating_window_hours"] == 6
 
     bad = await client.patch("/me", json={"timezone": "Mars/Base"})
     assert bad.status_code == 422
+
+
+async def test_eating_window_follows_fasting_hours(client):
+    me = (await client.get("/me")).json()
+    assert me["goals"]["eating_window_hours"] == 8  # default 16:8
+
+    resp = await client.patch("/me", json={"goals": {"default_fast_hours": 20}})
+    assert resp.status_code == 200
+    assert resp.json()["goals"]["eating_window_hours"] == 4
+
+    # Persisted, not just echoed back.
+    assert (await client.get("/me")).json()["goals"]["eating_window_hours"] == 4
+
+
+async def test_fasting_hours_must_leave_an_eating_window(client):
+    for hours in (0, 24, 36):
+        resp = await client.patch("/me", json={"goals": {"default_fast_hours": hours}})
+        assert resp.status_code == 422, hours
+    assert (await client.get("/me")).json()["goals"]["default_fast_hours"] == 16
