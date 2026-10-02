@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def iso(dt: datetime) -> str:
@@ -36,7 +36,7 @@ async def test_cannot_end_twice(client):
 
 
 async def test_backdated_start_and_validation(client):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     resp = await client.post(
         "/fasts/start",
         json={"started_at": iso(now - timedelta(hours=10)), "target_hours": 14},
@@ -50,9 +50,7 @@ async def test_backdated_start_and_validation(client):
     )
     assert before_start.status_code == 422
 
-    future = await client.post(
-        "/fasts/start", json={"started_at": iso(now + timedelta(hours=2))}
-    )
+    future = await client.post("/fasts/start", json={"started_at": iso(now + timedelta(hours=2))})
     assert future.status_code in (409, 422)
 
     naive = await client.post("/fasts/start", json={"started_at": "2026-01-01T10:00:00"})
@@ -60,15 +58,11 @@ async def test_backdated_start_and_validation(client):
 
 
 async def test_patch_reopen_conflicts_with_open_fast(client):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = (
-        await client.post(
-            "/fasts/start", json={"started_at": iso(now - timedelta(hours=30))}
-        )
+        await client.post("/fasts/start", json={"started_at": iso(now - timedelta(hours=30))})
     ).json()
-    await client.post(
-        f"/fasts/{old['id']}/end", json={"ended_at": iso(now - timedelta(hours=14))}
-    )
+    await client.post(f"/fasts/{old['id']}/end", json={"ended_at": iso(now - timedelta(hours=14))})
     await client.post("/fasts/start", json={})
 
     resp = await client.patch(f"/fasts/{old['id']}", json={"ended_at": None})
@@ -80,11 +74,9 @@ async def test_patch_reopen_conflicts_with_open_fast(client):
 
 
 async def test_list_and_delete(client):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = (
-        await client.post(
-            "/fasts/start", json={"started_at": iso(now - timedelta(days=40))}
-        )
+        await client.post("/fasts/start", json={"started_at": iso(now - timedelta(days=40))})
     ).json()
     await client.post(
         f"/fasts/{old['id']}/end",

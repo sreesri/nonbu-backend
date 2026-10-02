@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
@@ -21,7 +21,9 @@ async def _get_owned(session: Session, user: User, food_id: int) -> FoodLog:
     return entry
 
 
-async def entries_between(session: Session, user: User, start, end) -> list[FoodLog]:
+async def entries_between(
+    session: Session, user: User, start: datetime, end: datetime
+) -> list[FoodLog]:
     result = await session.scalars(
         select(FoodLog)
         .where(
@@ -81,9 +83,7 @@ async def get_food(food_id: int, user: CurrentUser, session: Session) -> FoodLog
 
 
 @router.patch("/{food_id}", response_model=FoodOut)
-async def patch_food(
-    food_id: int, body: FoodPatch, user: CurrentUser, session: Session
-) -> FoodLog:
+async def patch_food(food_id: int, body: FoodPatch, user: CurrentUser, session: Session) -> FoodLog:
     entry = await _get_owned(session, user, food_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         if field in _REQUIRED and value is None:

@@ -46,9 +46,7 @@ async def test_requires_bearer(anon_client):
 
 
 async def test_refresh_rotates_token(anon_client, tokens):
-    resp = await anon_client.post(
-        "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-    )
+    resp = await anon_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 200
     new = resp.json()
     assert new["refresh_token"] != tokens["refresh_token"]
@@ -59,20 +57,14 @@ async def test_refresh_rotates_token(anon_client, tokens):
     )
     assert reused.status_code == 401
 
-    me = await anon_client.get(
-        "/me", headers={"Authorization": f"Bearer {new['access_token']}"}
-    )
+    me = await anon_client.get("/me", headers={"Authorization": f"Bearer {new['access_token']}"})
     assert me.status_code == 200
 
 
 async def test_logout_revokes_refresh(anon_client, tokens):
-    resp = await anon_client.post(
-        "/auth/logout", json={"refresh_token": tokens["refresh_token"]}
-    )
+    resp = await anon_client.post("/auth/logout", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 204
-    resp = await anon_client.post(
-        "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-    )
+    resp = await anon_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 401
 
 

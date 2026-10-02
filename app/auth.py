@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 from datetime import timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -20,7 +20,11 @@ _google_request = google_requests.Request()
 
 def verify_google_id_token(token: str, settings: Settings) -> dict[str, Any]:
     """Validate a Google ID token's signature, expiry and audience; return its claims."""
-    claims = google_id_token.verify_oauth2_token(token, _google_request)
+    # google-auth is untyped; verify_oauth2_token returns the decoded claims dict.
+    claims = cast(
+        dict[str, Any],
+        google_id_token.verify_oauth2_token(token, _google_request),  # type: ignore[no-untyped-call]
+    )
     if claims.get("aud") not in settings.google_client_ids:
         raise ValueError("token audience is not an allowed client id")
     return claims
@@ -70,7 +74,7 @@ async def get_current_user(
             algorithms=[settings.jwt_algorithm],
         )
     except jwt.PyJWTError:
-        raise unauthorized
+        raise unauthorized from None
     if payload.get("type") != "access":
         raise unauthorized
     user = await session.get(User, int(payload["sub"]))

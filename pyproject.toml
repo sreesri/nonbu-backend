@@ -23,8 +23,10 @@ dependencies = [
 dev = [
     "aiosqlite>=0.22.1",
     "httpx>=0.28.1",
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
 ]
 
 [tool.uv]
@@ -35,3 +37,34 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "ASYNC",    # async pitfalls
+    "S",        # bandit security checks
+    "RUF",
+]
+# B008: FastAPI's Depends()/Query() in defaults is the intended pattern.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use assert and hard-coded fake secrets/tokens.
+"tests/**" = ["S101", "S105", "S106"]
+# Generated migrations.
+"alembic/versions/**" = ["E501", "W291"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app"]

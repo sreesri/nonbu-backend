@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 async def add(client, **overrides):
@@ -23,9 +23,7 @@ async def test_food_crud(client):
     listed = (await client.get("/food")).json()
     assert [e["id"] for e in listed] == [entry["id"]]
 
-    resp = await client.patch(
-        f"/food/{entry['id']}", json={"calories": 350, "name": None}
-    )
+    resp = await client.patch(f"/food/{entry['id']}", json={"calories": 350, "name": None})
     assert resp.status_code == 200
     assert resp.json()["calories"] == 350
     assert resp.json()["name"] == "Oats"  # required field not cleared
@@ -37,9 +35,7 @@ async def test_food_crud(client):
 async def test_food_validation(client):
     resp = await client.post("/food", json={"name": "X", "meal_type": "brunch"})
     assert resp.status_code == 422
-    resp = await client.post(
-        "/food", json={"name": "X", "meal_type": "snack", "calories": -5}
-    )
+    resp = await client.post("/food", json={"name": "X", "meal_type": "snack", "calories": -5})
     assert resp.status_code == 422
 
 
@@ -66,16 +62,22 @@ async def test_recent_dedupes_by_name(client):
 async def test_daily_summary(client):
     await client.patch("/me", json={"goals": {"daily_calories": 2000}})
     await add(client, eaten_at="2026-03-10T08:00:00Z")
-    await add(client, eaten_at="2026-03-10T13:00:00Z", name="Rice", calories=500,
-              protein_g=8, carbs_g=110, fat_g=1, meal_type="lunch")
+    await add(
+        client,
+        eaten_at="2026-03-10T13:00:00Z",
+        name="Rice",
+        calories=500,
+        protein_g=8,
+        carbs_g=110,
+        fat_g=1,
+        meal_type="lunch",
+    )
     await add(client, eaten_at="2026-03-11T08:00:00Z")  # next day
 
     # A fast from 2026-03-09 20:00 to 2026-03-10 12:00 UTC -> 12h on the 10th.
-    now = datetime.now(timezone.utc)
-    assert now > datetime(2026, 3, 10, 12, tzinfo=timezone.utc)
-    fast = (
-        await client.post("/fasts/start", json={"started_at": "2026-03-09T20:00:00Z"})
-    ).json()
+    now = datetime.now(UTC)
+    assert now > datetime(2026, 3, 10, 12, tzinfo=UTC)
+    fast = (await client.post("/fasts/start", json={"started_at": "2026-03-09T20:00:00Z"})).json()
     await client.post(f"/fasts/{fast['id']}/end", json={"ended_at": "2026-03-10T12:00:00Z"})
 
     summary = (await client.get("/summary/daily", params={"date": "2026-03-10"})).json()
@@ -97,17 +99,13 @@ async def test_range_summary(client):
     assert [d["date"] for d in days] == ["2026-03-09", "2026-03-10", "2026-03-11"]
     assert [d["totals"]["calories"] for d in days] == [0, 300, 0]
 
-    too_long = await client.get(
-        "/summary/range", params={"from": "2026-01-01", "to": "2026-12-31"}
-    )
+    too_long = await client.get("/summary/range", params={"from": "2026-01-01", "to": "2026-12-31"})
     assert too_long.status_code == 422
 
 
 async def test_open_fast_counts_until_now(client):
-    now = datetime.now(timezone.utc)
-    await client.post(
-        "/fasts/start", json={"started_at": (now - timedelta(hours=3)).isoformat()}
-    )
+    now = datetime.now(UTC)
+    await client.post("/fasts/start", json={"started_at": (now - timedelta(hours=3)).isoformat()})
     today = (await client.get("/summary/daily")).json()
     # Up to 3h, possibly split across a UTC day boundary.
     assert 0 < today["fasting_hours"] <= 3.01

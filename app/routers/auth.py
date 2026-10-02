@@ -28,20 +28,16 @@ async def _issue_tokens(session: Session, user: User, settings: Settings) -> Tok
 
 
 @router.post("/google", response_model=TokenPair)
-async def google_login(
-    body: GoogleLoginIn, session: Session, settings: SettingsDep
-) -> TokenPair:
+async def google_login(body: GoogleLoginIn, session: Session, settings: SettingsDep) -> TokenPair:
     try:
         # Verification may fetch Google's certs over the network; keep it off the loop.
-        claims = await run_in_threadpool(
-            auth.verify_google_id_token, body.id_token, settings
-        )
-    except TransportError:
+        claims = await run_in_threadpool(auth.verify_google_id_token, body.id_token, settings)
+    except TransportError as err:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "could not reach Google to verify token"
-        )
-    except ValueError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid Google token")
+        ) from err
+    except ValueError as err:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid Google token") from err
 
     email = str(claims.get("email", "")).lower()
     if not claims.get("email_verified") or email not in settings.allowed_emails:

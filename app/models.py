@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     DateTime,
@@ -12,32 +12,33 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-class UTCDateTime(TypeDecorator):
+class UTCDateTime(TypeDecorator[datetime]):
     """Timezone-aware datetime stored as UTC; always returned tz-aware (SQLite drops tzinfo)."""
 
     impl = DateTime(timezone=True)
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         if value is None:
             return None
         if value.tzinfo is None:
             raise ValueError("naive datetime not allowed")
-        return value.astimezone(timezone.utc)
+        return value.astimezone(UTC)
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         if value is None:
             return None
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):
@@ -87,9 +88,7 @@ class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)

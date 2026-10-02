@@ -23,9 +23,7 @@ def _totals(entries: list[FoodLog]) -> Totals:
     )
 
 
-async def _summaries(
-    session: Session, user: User, from_: date, to: date
-) -> list[DailySummary]:
+async def _summaries(session: Session, user: User, from_: date, to: date) -> list[DailySummary]:
     range_start, _ = day_bounds(from_, user.timezone)
     _, range_end = day_bounds(to, user.timezone)
     entries = await entries_between(session, user, range_start, range_end)
@@ -46,9 +44,7 @@ async def _summaries(
     while day <= to:
         start, end = day_bounds(day, user.timezone)
         day_entries = [e for e in entries if start <= e.eaten_at < end]
-        fasting = sum(
-            overlap_hours(f.started_at, f.ended_at or now, start, end) for f in fasts
-        )
+        fasting = sum(overlap_hours(f.started_at, f.ended_at or now, start, end) for f in fasts)
         summaries.append(
             DailySummary(
                 date=day,

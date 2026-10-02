@@ -26,9 +26,7 @@ class Settings(BaseSettings):
     # Only these Google accounts may sign in.
     allowed_emails: Annotated[list[str], NoDecode] = []
 
-    _split = field_validator("google_client_ids", "allowed_emails", mode="before")(
-        _split_csv
-    )
+    _split = field_validator("google_client_ids", "allowed_emails", mode="before")(_split_csv)
 
     @field_validator("allowed_emails", mode="after")
     @classmethod
@@ -49,9 +47,7 @@ class Settings(BaseSettings):
         if "sslmode" in query:
             query["ssl"] = query.pop("sslmode")
         query.pop("channel_binding", None)
-        return urlunsplit(
-            parts._replace(scheme="postgresql+asyncpg", query=urlencode(query))
-        )
+        return urlunsplit(parts._replace(scheme="postgresql+asyncpg", query=urlencode(query)))
 
 
 @lru_cache

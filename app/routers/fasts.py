@@ -32,9 +32,9 @@ def _validate_times(started_at: datetime, ended_at: datetime | None) -> None:
 async def _commit_or_conflict(session: Session) -> None:
     try:
         await session.commit()
-    except IntegrityError:
+    except IntegrityError as err:
         await session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "a fast is already in progress")
+        raise HTTPException(status.HTTP_409_CONFLICT, "a fast is already in progress") from err
 
 
 @router.get("/current", response_model=FastOut | None)
@@ -62,9 +62,7 @@ async def start_fast(body: FastStart, user: CurrentUser, session: Session) -> Fa
 
 
 @router.post("/{fast_id}/end", response_model=FastOut)
-async def end_fast(
-    fast_id: int, body: FastEnd, user: CurrentUser, session: Session
-) -> Fast:
+async def end_fast(fast_id: int, body: FastEnd, user: CurrentUser, session: Session) -> Fast:
     fast = await _get_owned(session, user, fast_id)
     if fast.ended_at is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "fast already ended")
@@ -102,9 +100,7 @@ async def list_fasts(
 
 
 @router.patch("/{fast_id}", response_model=FastOut)
-async def patch_fast(
-    fast_id: int, body: FastPatch, user: CurrentUser, session: Session
-) -> Fast:
+async def patch_fast(fast_id: int, body: FastPatch, user: CurrentUser, session: Session) -> Fast:
     fast = await _get_owned(session, user, fast_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         if field in ("started_at", "target_hours") and value is None:

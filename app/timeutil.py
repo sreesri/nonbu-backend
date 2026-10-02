@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -11,7 +11,7 @@ def day_bounds(day: date, tz_name: str) -> tuple[datetime, datetime]:
     tz = ZoneInfo(tz_name)
     start = datetime.combine(day, time.min, tzinfo=tz)
     end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz)
-    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+    return start.astimezone(UTC), end.astimezone(UTC)
 
 
 def overlap_hours(

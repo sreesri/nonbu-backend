@@ -27,7 +27,7 @@ class RefreshIn(BaseModel):
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105 - OAuth token type, not a secret
     expires_in: int
 
 
@@ -70,8 +70,8 @@ class UserPatch(BaseModel):
         if value is not None:
             try:
                 ZoneInfo(value)
-            except (ZoneInfoNotFoundError, ValueError):
-                raise ValueError(f"unknown timezone {value!r}")
+            except (ZoneInfoNotFoundError, ValueError) as err:
+                raise ValueError(f"unknown timezone {value!r}") from err
         return value
 
 
