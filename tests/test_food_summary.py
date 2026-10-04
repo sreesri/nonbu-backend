@@ -77,8 +77,9 @@ async def test_daily_summary(client):
     # A fast from 2026-03-09 20:00 to 2026-03-10 12:00 UTC -> 12h on the 10th.
     now = datetime.now(UTC)
     assert now > datetime(2026, 3, 10, 12, tzinfo=UTC)
-    fast = (await client.post("/fasts/start", json={"started_at": "2026-03-09T20:00:00Z"})).json()
-    await client.post(f"/fasts/{fast['id']}/end", json={"ended_at": "2026-03-10T12:00:00Z"})
+    await client.post("/sessions/switch", json={"kind": "fast", "at": "2026-03-09T20:00:00Z"})
+    # The eating session that follows must not count as fasting.
+    await client.post("/sessions/switch", json={"kind": "eat", "at": "2026-03-10T12:00:00Z"})
 
     summary = (await client.get("/summary/daily", params={"date": "2026-03-10"})).json()
     assert summary["entry_count"] == 2
@@ -105,7 +106,9 @@ async def test_range_summary(client):
 
 async def test_open_fast_counts_until_now(client):
     now = datetime.now(UTC)
-    await client.post("/fasts/start", json={"started_at": (now - timedelta(hours=3)).isoformat()})
+    await client.post(
+        "/sessions/switch", json={"kind": "fast", "at": (now - timedelta(hours=3)).isoformat()}
+    )
     today = (await client.get("/summary/daily")).json()
     # Up to 3h, possibly split across a UTC day boundary.
     assert 0 < today["fasting_hours"] <= 3.01
