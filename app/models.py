@@ -82,6 +82,7 @@ class UserGoals(Base):
     protein_g: Mapped[float | None] = mapped_column(Float)
     carbs_g: Mapped[float | None] = mapped_column(Float)
     fat_g: Mapped[float | None] = mapped_column(Float)
+    fiber_g: Mapped[float | None] = mapped_column(Float)
     default_fast_hours: Mapped[float] = mapped_column(Float, default=16)
 
     user: Mapped[User] = relationship(back_populates="goals")
@@ -142,4 +143,5 @@ class FoodLog(TimestampMixin, Base):
     protein_g: Mapped[float | None] = mapped_column(Float)
     carbs_g: Mapped[float | None] = mapped_column(Float)
     fat_g: Mapped[float | None] = mapped_column(Float)
+    fiber_g: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)

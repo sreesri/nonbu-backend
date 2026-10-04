@@ -20,6 +20,7 @@ def _totals(entries: list[FoodLog]) -> Totals:
         protein_g=sum(e.protein_g or 0 for e in entries),
         carbs_g=sum(e.carbs_g or 0 for e in entries),
         fat_g=sum(e.fat_g or 0 for e in entries),
+        fiber_g=sum(e.fiber_g or 0 for e in entries),
     )
 
 
