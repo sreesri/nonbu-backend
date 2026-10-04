@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 
-from app.routers import auth, fasts, food, me, summary
+from app.routers import auth, food, me, sessions, summary
 
 app = FastAPI(title="Nonbu API", version="0.1.0")
 
-for module in (auth, me, fasts, food, summary):
+for module in (auth, me, sessions, food, summary):
     app.include_router(module.router)
 
 

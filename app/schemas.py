@@ -1,10 +1,19 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 MealType = Literal["breakfast", "lunch", "dinner", "snack"]
+SessionKind = Literal["fast", "eat"]
 
 NonNegative = Field(default=None, ge=0)
 
@@ -12,6 +21,20 @@ HOURS_PER_DAY = 24
 # The daily schedule always leaves at least an hour to fast and to eat.
 MIN_FAST_HOURS = 1
 MAX_FAST_HOURS = HOURS_PER_DAY - 1
+MAX_SESSION_HOURS = 240
+
+TargetHours = Field(default=None, gt=0, le=MAX_SESSION_HOURS)
+
+
+def _check_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as err:
+        raise ValueError(f"unknown timezone {value!r}") from err
+    return value
+
+
+Timezone = Annotated[str, AfterValidator(_check_timezone)]
 
 
 class ORMModel(BaseModel):
@@ -67,47 +90,59 @@ class UserOut(ORMModel):
     name: str | None
     avatar_url: str | None
     timezone: str
+    onboarded_at: datetime | None
     goals: GoalsOut
 
 
 class UserPatch(BaseModel):
     name: str | None = None
-    timezone: str | None = None
+    timezone: Timezone | None = None
     goals: GoalsIn | None = None
 
-    @field_validator("timezone")
-    @classmethod
-    def _valid_tz(cls, value: str | None) -> str | None:
-        if value is not None:
-            try:
-                ZoneInfo(value)
-            except (ZoneInfoNotFoundError, ValueError) as err:
-                raise ValueError(f"unknown timezone {value!r}") from err
-        return value
 
+class OnboardingSession(BaseModel):
+    """The session the user is in at setup: when it started, or (eating only) when they plan
+    to start fasting, in which case the eating window is counted from the start of today."""
 
-# --- fasts --------------------------------------------------------------
-
-
-class FastStart(BaseModel):
+    kind: SessionKind
     started_at: AwareDatetime | None = None
-    target_hours: float | None = Field(default=None, gt=0, le=240)
+    fast_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def _one_anchor(self) -> Self:
+        if (self.started_at is None) == (self.fast_at is None):
+            raise ValueError("give exactly one of started_at or fast_at")
+        if self.fast_at is not None and self.kind != "eat":
+            raise ValueError("fast_at is only valid for an eating session")
+        return self
+
+
+class OnboardingIn(BaseModel):
+    timezone: Timezone
+    goals: GoalsIn
+    current: OnboardingSession
+
+
+# --- sessions -----------------------------------------------------------
+
+
+class SessionSwitch(BaseModel):
+    kind: SessionKind
+    at: AwareDatetime | None = None
+    target_hours: float | None = TargetHours
     notes: str | None = None
 
 
-class FastEnd(BaseModel):
-    ended_at: AwareDatetime | None = None
-
-
-class FastPatch(BaseModel):
+class SessionPatch(BaseModel):
     started_at: AwareDatetime | None = None
     ended_at: AwareDatetime | None = None
-    target_hours: float | None = Field(default=None, gt=0, le=240)
+    target_hours: float | None = TargetHours
     notes: str | None = None
 
 
-class FastOut(ORMModel):
+class SessionOut(ORMModel):
     id: int
+    kind: SessionKind
     started_at: datetime
     ended_at: datetime | None
     target_hours: float

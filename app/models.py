@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -63,6 +64,8 @@ class User(TimestampMixin, Base):
     name: Mapped[str | None] = mapped_column(String(255))
     avatar_url: Mapped[str | None] = mapped_column(Text)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    # Null until the first-run setup (schedule, current session, goals) is completed.
+    onboarded_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     goals: Mapped["UserGoals"] = relationship(
         back_populates="user", lazy="selectin", cascade="all, delete-orphan"
@@ -97,22 +100,27 @@ class RefreshToken(Base):
     )
 
 
-class Fast(TimestampMixin, Base):
-    __tablename__ = "fasts"
+class TimelineSession(TimestampMixin, Base):
+    """A fasting or eating session. Switching closes the open one and opens the other kind
+    at the same instant, so sessions form a contiguous, non-overlapping timeline."""
+
+    __tablename__ = "sessions"
     __table_args__ = (
-        # At most one open (not yet ended) fast per user.
+        # At most one open (not yet ended) session per user.
         Index(
-            "uq_fasts_one_open_per_user",
+            "uq_sessions_one_open_per_user",
             "user_id",
             unique=True,
             postgresql_where=text("ended_at IS NULL"),
             sqlite_where=text("ended_at IS NULL"),
         ),
-        Index("ix_fasts_user_started", "user_id", "started_at"),
+        Index("ix_sessions_user_started", "user_id", "started_at"),
+        CheckConstraint("kind IN ('fast', 'eat')", name="ck_sessions_kind"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))
     started_at: Mapped[datetime] = mapped_column(UTCDateTime)
     ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     target_hours: Mapped[float] = mapped_column(Float)

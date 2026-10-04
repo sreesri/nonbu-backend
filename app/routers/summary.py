@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import or_, select
 
 from app.auth import CurrentUser, Session
-from app.models import Fast, FoodLog, User, utcnow
+from app.models import FoodLog, TimelineSession, User, utcnow
 from app.routers.food import entries_between
 from app.schemas import DailySummary, GoalsOut, Totals
 from app.timeutil import day_bounds, local_today, overlap_hours
@@ -29,10 +29,11 @@ async def _summaries(session: Session, user: User, from_: date, to: date) -> lis
     entries = await entries_between(session, user, range_start, range_end)
     fasts = list(
         await session.scalars(
-            select(Fast).where(
-                Fast.user_id == user.id,
-                Fast.started_at < range_end,
-                or_(Fast.ended_at.is_(None), Fast.ended_at > range_start),
+            select(TimelineSession).where(
+                TimelineSession.user_id == user.id,
+                TimelineSession.kind == "fast",
+                TimelineSession.started_at < range_end,
+                or_(TimelineSession.ended_at.is_(None), TimelineSession.ended_at > range_start),
             )
         )
     )
