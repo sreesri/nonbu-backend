@@ -67,6 +67,7 @@ class GoalsOut(ORMModel):
     protein_g: float | None
     carbs_g: float | None
     fat_g: float | None
+    fiber_g: float | None
     default_fast_hours: float
 
     @computed_field  # type: ignore[prop-decorator]
@@ -81,6 +82,7 @@ class GoalsIn(BaseModel):
     protein_g: float | None = NonNegative
     carbs_g: float | None = NonNegative
     fat_g: float | None = NonNegative
+    fiber_g: float | None = NonNegative
     default_fast_hours: float | None = Field(default=None, ge=MIN_FAST_HOURS, le=MAX_FAST_HOURS)
 
 
@@ -161,6 +163,7 @@ class FoodBase(BaseModel):
     protein_g: float | None = NonNegative
     carbs_g: float | None = NonNegative
     fat_g: float | None = NonNegative
+    fiber_g: float | None = NonNegative
     notes: str | None = None
 
 
@@ -178,6 +181,7 @@ class FoodPatch(BaseModel):
     protein_g: float | None = NonNegative
     carbs_g: float | None = NonNegative
     fat_g: float | None = NonNegative
+    fiber_g: float | None = NonNegative
     notes: str | None = None
 
 
@@ -194,6 +198,7 @@ class Totals(BaseModel):
     protein_g: float = 0
     carbs_g: float = 0
     fat_g: float = 0
+    fiber_g: float = 0
 
 
 class DailySummary(BaseModel):

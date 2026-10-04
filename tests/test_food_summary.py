@@ -9,6 +9,7 @@ async def add(client, **overrides):
         "protein_g": 10,
         "carbs_g": 50,
         "fat_g": 6,
+        "fiber_g": 8,
         **overrides,
     }
     resp = await client.post("/food", json=body)
@@ -27,6 +28,10 @@ async def test_food_crud(client):
     assert resp.status_code == 200
     assert resp.json()["calories"] == 350
     assert resp.json()["name"] == "Oats"  # required field not cleared
+    assert resp.json()["fiber_g"] == 8
+
+    cleared = await client.patch(f"/food/{entry['id']}", json={"fiber_g": None})
+    assert cleared.json()["fiber_g"] is None
 
     assert (await client.delete(f"/food/{entry['id']}")).status_code == 204
     assert (await client.get(f"/food/{entry['id']}")).status_code == 404
@@ -36,6 +41,8 @@ async def test_food_validation(client):
     resp = await client.post("/food", json={"name": "X", "meal_type": "brunch"})
     assert resp.status_code == 422
     resp = await client.post("/food", json={"name": "X", "meal_type": "snack", "calories": -5})
+    assert resp.status_code == 422
+    resp = await client.post("/food", json={"name": "X", "meal_type": "snack", "fiber_g": -1})
     assert resp.status_code == 422
 
 
@@ -60,7 +67,7 @@ async def test_recent_dedupes_by_name(client):
 
 
 async def test_daily_summary(client):
-    await client.patch("/me", json={"goals": {"daily_calories": 2000}})
+    await client.patch("/me", json={"goals": {"daily_calories": 2000, "fiber_g": 30}})
     await add(client, eaten_at="2026-03-10T08:00:00Z")
     await add(
         client,
@@ -70,6 +77,7 @@ async def test_daily_summary(client):
         protein_g=8,
         carbs_g=110,
         fat_g=1,
+        fiber_g=2.5,
         meal_type="lunch",
     )
     await add(client, eaten_at="2026-03-11T08:00:00Z")  # next day
@@ -88,8 +96,10 @@ async def test_daily_summary(client):
         "protein_g": 18,
         "carbs_g": 160,
         "fat_g": 7,
+        "fiber_g": 10.5,
     }
     assert summary["goals"]["daily_calories"] == 2000
+    assert summary["goals"]["fiber_g"] == 30
     assert summary["fasting_hours"] == 12
 
 
