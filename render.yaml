@@ -2,6 +2,8 @@ services:
   - type: web
     name: nonbu-backend
     runtime: docker
+    # Same region as the Neon database: every query is a round trip between the two.
+    region: singapore
     plan: free
     branch: main
     autoDeploy: true
