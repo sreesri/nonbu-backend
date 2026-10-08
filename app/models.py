@@ -128,20 +128,90 @@ class TimelineSession(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
-class FoodLog(TimestampMixin, Base):
-    __tablename__ = "food_logs"
-    __table_args__ = (Index("ix_food_logs_user_eaten", "user_id", "eaten_at"),)
+class NutritionMixin:
+    """Nutrition for one serving; any value may be unknown."""
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    eaten_at: Mapped[datetime] = mapped_column(UTCDateTime)
-    name: Mapped[str] = mapped_column(String(255))
-    meal_type: Mapped[str] = mapped_column(String(16))
-    quantity: Mapped[float | None] = mapped_column(Float)
-    unit: Mapped[str | None] = mapped_column(String(32))
     calories: Mapped[float | None] = mapped_column(Float)
     protein_g: Mapped[float | None] = mapped_column(Float)
     carbs_g: Mapped[float | None] = mapped_column(Float)
     fat_g: Mapped[float | None] = mapped_column(Float)
     fiber_g: Mapped[float | None] = mapped_column(Float)
+
+
+class Dish(NutritionMixin, TimestampMixin, Base):
+    """A dish in the user's library; `quantity` + `unit` describe one serving (e.g. 2 pc)."""
+
+    __tablename__ = "dishes"
+    __table_args__ = (Index("ix_dishes_user", "user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255))
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(32))
+
+
+class SavedMeal(TimestampMixin, Base):
+    """A named combination of library dishes, for logging the same meal again in one tap.
+    Its nutrition follows the dishes, so editing a dish updates every meal that uses it."""
+
+    __tablename__ = "saved_meals"
+    __table_args__ = (Index("ix_saved_meals_user", "user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255))
+
+    items: Mapped[list["SavedMealItem"]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="SavedMealItem.position"
+    )
+
+
+class SavedMealItem(Base):
+    __tablename__ = "saved_meal_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    saved_meal_id: Mapped[int] = mapped_column(
+        ForeignKey("saved_meals.id", ondelete="CASCADE"), index=True
+    )
+    # Deleting a dish drops it from the saved meals that use it.
+    dish_id: Mapped[int] = mapped_column(ForeignKey("dishes.id", ondelete="CASCADE"), index=True)
+    servings: Mapped[float] = mapped_column(Float, default=1)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    dish: Mapped[Dish] = relationship(lazy="selectin")
+
+
+class MealLog(TimestampMixin, Base):
+    """A meal the user ate: one or more dishes at one time."""
+
+    __tablename__ = "meal_logs"
+    __table_args__ = (Index("ix_meal_logs_user_eaten", "user_id", "eaten_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    eaten_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    name: Mapped[str | None] = mapped_column(String(255))
+    meal_type: Mapped[str] = mapped_column(String(16))
     notes: Mapped[str | None] = mapped_column(Text)
+
+    items: Mapped[list["MealLogItem"]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="MealLogItem.position"
+    )
+
+
+class MealLogItem(NutritionMixin, Base):
+    """A dish as eaten in a logged meal. Copied from the library rather than linked, so
+    editing or deleting a library dish never rewrites what was already logged."""
+
+    __tablename__ = "meal_log_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meal_log_id: Mapped[int] = mapped_column(
+        ForeignKey("meal_logs.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(255))
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(32))
+    servings: Mapped[float] = mapped_column(Float, default=1)
