@@ -314,6 +314,11 @@ class MealOut(ORMModel):
 # --- summary ------------------------------------------------------------
 
 
+class Streak(BaseModel):
+    # Consecutive days, ending today or yesterday, on which a fast that reached its goal ended.
+    days: int
+
+
 class DailySummary(BaseModel):
     date: date
     totals: Totals

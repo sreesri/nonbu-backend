@@ -6,6 +6,11 @@ def local_today(tz_name: str) -> date:
     return datetime.now(ZoneInfo(tz_name)).date()
 
 
+def local_date(moment: datetime, tz_name: str) -> date:
+    """The calendar date `moment` falls on in the given timezone."""
+    return moment.astimezone(ZoneInfo(tz_name)).date()
+
+
 def day_bounds(day: date, tz_name: str) -> tuple[datetime, datetime]:
     """UTC [start, end) of a calendar day in the given timezone (handles DST-length days)."""
     tz = ZoneInfo(tz_name)

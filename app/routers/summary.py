@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from collections.abc import Iterable
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import or_, select
@@ -6,8 +7,8 @@ from sqlalchemy import or_, select
 from app.auth import CurrentUser, Session
 from app.models import MealLog, TimelineSession, User, utcnow
 from app.routers.meals import meals_between
-from app.schemas import DailySummary, GoalsOut, MealOut, Totals, sum_totals
-from app.timeutil import day_bounds, local_today, overlap_hours
+from app.schemas import DailySummary, GoalsOut, MealOut, Streak, Totals, sum_totals
+from app.timeutil import day_bounds, local_date, local_today, overlap_hours
 
 router = APIRouter(prefix="/summary", tags=["summary"])
 
@@ -77,3 +78,38 @@ async def range_summary(
             f"range is limited to {MAX_RANGE_DAYS} days",
         )
     return await _summaries(session, user, from_, to)
+
+
+def goal_days(fasts: Iterable[tuple[datetime, datetime, float]], tz_name: str) -> set[date]:
+    """Local dates on which a fast (start, end, target hours) that reached its goal ended."""
+    return {
+        local_date(end, tz_name)
+        for start, end, target_hours in fasts
+        if end - start >= timedelta(hours=target_hours)
+    }
+
+
+def count_streak(days: set[date], today: date) -> int:
+    """Consecutive days in `days` ending today, or yesterday while today is still open."""
+    day = today if today in days else today - timedelta(days=1)
+    count = 0
+    while day in days:
+        count += 1
+        day -= timedelta(days=1)
+    return count
+
+
+@router.get("/streak", response_model=Streak)
+async def streak(user: CurrentUser, session: Session) -> Streak:
+    fasts = await session.execute(
+        select(
+            TimelineSession.started_at, TimelineSession.ended_at, TimelineSession.target_hours
+        ).where(
+            TimelineSession.user_id == user.id,
+            TimelineSession.kind == "fast",
+            TimelineSession.ended_at.is_not(None),
+        )
+    )
+    completed = ((start, end, target) for start, end, target in fasts if end is not None)
+    days = goal_days(completed, user.timezone)
+    return Streak(days=count_streak(days, local_today(user.timezone)))
