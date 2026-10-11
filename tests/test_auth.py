@@ -51,14 +51,37 @@ async def test_refresh_rotates_token(anon_client, tokens):
     new = resp.json()
     assert new["refresh_token"] != tokens["refresh_token"]
 
-    # The old refresh token is single-use.
+    me = await anon_client.get("/me", headers={"Authorization": f"Bearer {new['access_token']}"})
+    assert me.status_code == 200
+
+    # Once the new refresh token has been used, the old one is dead.
+    newer = await anon_client.post("/auth/refresh", json={"refresh_token": new["refresh_token"]})
+    assert newer.status_code == 200
     reused = await anon_client.post(
         "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert reused.status_code == 401
 
-    me = await anon_client.get("/me", headers={"Authorization": f"Bearer {new['access_token']}"})
-    assert me.status_code == 200
+
+async def refresh(client, token):
+    return await client.post("/auth/refresh", json={"refresh_token": token})
+
+
+async def test_refresh_survives_a_lost_response(anon_client, tokens):
+    # The server rotates the token, but the app never receives the reply.
+    lost = (await refresh(anon_client, tokens["refresh_token"])).json()
+
+    # Retrying with the old token works, and the reply it never got is retired instead.
+    retried = await refresh(anon_client, tokens["refresh_token"])
+    assert retried.status_code == 200
+    assert (await refresh(anon_client, lost["refresh_token"])).status_code == 401
+
+    # It can happen more than once.
+    again = await refresh(anon_client, tokens["refresh_token"])
+    assert again.status_code == 200
+    assert (await refresh(anon_client, retried.json()["refresh_token"])).status_code == 401
+    assert (await refresh(anon_client, again.json()["refresh_token"])).status_code == 200
+    assert (await refresh(anon_client, tokens["refresh_token"])).status_code == 401
 
 
 async def test_logout_revokes_refresh(anon_client, tokens):

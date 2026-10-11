@@ -16,9 +16,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-async def _issue_tokens(session: Session, user: User, settings: Settings) -> TokenPair:
+async def _issue_tokens(
+    session: Session, user: User, settings: Settings, replaces: RefreshToken | None = None
+) -> TokenPair:
     raw, row = auth.new_refresh_token(user.id, settings)
     session.add(row)
+    if replaces is not None:
+        await session.flush()
+        replaces.replaced_by_id = row.id
     await session.commit()
     return TokenPair(
         access_token=auth.create_access_token(user.id, settings),
@@ -61,15 +66,28 @@ async def refresh(body: RefreshIn, session: Session, settings: SettingsDep) -> T
             RefreshToken.token_hash == auth.hash_refresh_token(body.refresh_token)
         )
     )
+    invalid = HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid refresh token")
     now = utcnow()
-    if row is None or row.revoked_at is not None or row.expires_at <= now:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid refresh token")
+    if row is None or row.expires_at <= now:
+        raise invalid
     user = await session.get(User, row.user_id)
     if user is None or user.email not in settings.allowed_emails:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid refresh token")
-    # Rotate: each refresh token is single-use.
-    row.revoked_at = now
-    return await _issue_tokens(session, user, settings)
+        raise invalid
+    if row.revoked_at is None:
+        # Rotate: each refresh token is single-use.
+        row.revoked_at = now
+    else:
+        # Already rotated. If the token it was rotated into has never been used, the app never
+        # received it (the response was lost to a dropped connection or a killed background task),
+        # so replace that one instead of signing the user out. Once the newer token has been
+        # used, or the token was logged out, reuse is refused.
+        successor = (
+            await session.get(RefreshToken, row.replaced_by_id) if row.replaced_by_id else None
+        )
+        if successor is None or successor.revoked_at is not None:
+            raise invalid
+        successor.revoked_at = now
+    return await _issue_tokens(session, user, settings, replaces=row)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

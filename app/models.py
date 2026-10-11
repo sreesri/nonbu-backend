@@ -96,6 +96,10 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # The token this one was rotated into, so a refresh whose response never arrived can be retried.
+    replaced_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("refresh_tokens.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime, default=utcnow, server_default=func.now()
     )
