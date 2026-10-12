@@ -1,14 +1,17 @@
 """The user's library of dishes, and of saved meals built from those dishes."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.auth import CurrentUser, Session
-from app.models import Dish, SavedMeal, SavedMealItem, User
+from app.models import Dish, MealLog, MealLogItem, SavedMeal, SavedMealItem, User
 from app.schemas import (
     DishIn,
     DishOut,
     DishPatch,
+    LibraryDishOut,
     SavedMealIn,
     SavedMealItemIn,
     SavedMealOut,
@@ -54,32 +57,61 @@ async def _meal_items(db: Session, user: User, items: list[SavedMealItemIn]) -> 
 
 # --- dishes -------------------------------------------------------------
 
+Usage = dict[int, tuple[int, datetime]]
 
-@router.get("/dishes", response_model=list[DishOut])
-async def list_dishes(user: CurrentUser, db: Session) -> list[DishOut]:
+
+async def _usage(db: Session, user: User, dish_id: int | None = None) -> Usage:
+    """How many meals each dish was logged in, and when it was last eaten."""
+    query = (
+        select(
+            MealLogItem.dish_id,
+            func.count(func.distinct(MealLogItem.meal_log_id)),
+            func.max(MealLog.eaten_at),
+        )
+        .join(MealLog, MealLog.id == MealLogItem.meal_log_id)
+        .where(MealLog.user_id == user.id, MealLogItem.dish_id.is_not(None))
+        .group_by(MealLogItem.dish_id)
+    )
+    if dish_id is not None:
+        query = query.where(MealLogItem.dish_id == dish_id)
+    return {d: (times, last) for d, times, last in await db.execute(query) if d is not None}
+
+
+def _with_usage(dish: Dish, usage: Usage) -> LibraryDishOut:
+    times, last = usage.get(dish.id, (0, None))
+    return LibraryDishOut(
+        **DishOut.model_validate(dish).model_dump(), times_eaten=times, last_eaten_at=last
+    )
+
+
+@router.get("/dishes", response_model=list[LibraryDishOut])
+async def list_dishes(user: CurrentUser, db: Session) -> list[LibraryDishOut]:
     rows = await db.scalars(
         select(Dish).where(Dish.user_id == user.id).order_by(func.lower(Dish.name), Dish.id)
     )
-    return [DishOut.model_validate(d) for d in rows]
+    usage = await _usage(db, user)
+    return [_with_usage(d, usage) for d in rows]
 
 
-@router.post("/dishes", response_model=DishOut, status_code=status.HTTP_201_CREATED)
-async def create_dish(body: DishIn, user: CurrentUser, db: Session) -> DishOut:
+@router.post("/dishes", response_model=LibraryDishOut, status_code=status.HTTP_201_CREATED)
+async def create_dish(body: DishIn, user: CurrentUser, db: Session) -> LibraryDishOut:
     dish = Dish(user_id=user.id, **body.model_dump())
     db.add(dish)
     await db.commit()
-    return DishOut.model_validate(dish)
+    return _with_usage(dish, {})
 
 
-@router.patch("/dishes/{dish_id}", response_model=DishOut)
-async def patch_dish(dish_id: int, body: DishPatch, user: CurrentUser, db: Session) -> DishOut:
+@router.patch("/dishes/{dish_id}", response_model=LibraryDishOut)
+async def patch_dish(
+    dish_id: int, body: DishPatch, user: CurrentUser, db: Session
+) -> LibraryDishOut:
     dish = await _owned_dish(db, user, dish_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         if field == "name" and value is None:
             continue
         setattr(dish, field, value)
     await db.commit()
-    return DishOut.model_validate(dish)
+    return _with_usage(dish, await _usage(db, user, dish.id))
 
 
 @router.delete("/dishes/{dish_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -95,6 +127,9 @@ async def delete_dish(dish_id: int, user: CurrentUser, db: Session) -> None:
         meal.items = [item for item in meal.items if item.dish_id != dish.id]
         if not meal.items:
             await db.delete(meal)
+    # Logged meals keep their copy of the dish; only the link goes (the FK does the same on
+    # Postgres, but SQLite only enforces it when foreign keys are switched on).
+    await db.execute(update(MealLogItem).where(MealLogItem.dish_id == dish.id).values(dish_id=None))
     await db.delete(dish)
     await db.commit()
 

@@ -227,6 +227,13 @@ class DishOut(DishIn, ORMModel):
     id: int
 
 
+class LibraryDishOut(DishOut):
+    """A library dish with how often and when it was last eaten, for suggesting dishes."""
+
+    times_eaten: int = 0
+    last_eaten_at: datetime | None = None
+
+
 # --- saved meal library -------------------------------------------------
 
 
@@ -268,6 +275,8 @@ class SavedMealOut(ORMModel):
 
 
 class MealItemIn(Nutrition):
+    # The library dish this was copied from, if any.
+    dish_id: int | None = None
     name: str = Name
     quantity: float | None = NonNegative
     unit: str | None = Unit

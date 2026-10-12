@@ -104,3 +104,62 @@ async def test_deleting_a_saved_meal_keeps_its_dishes(client):
     assert (await client.delete(f"/library/meals/{meal['id']}")).status_code == 204
     assert (await client.get("/library/meals")).json() == []
     assert len((await client.get("/library/dishes")).json()) == 1
+
+
+async def log_meal(client, eaten_at, *items):
+    body = {"meal_type": "lunch", "eaten_at": eaten_at, "items": list(items)}
+    resp = await client.post("/meals", json=body)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def test_dishes_report_how_often_and_when_they_were_eaten(client):
+    rice = await add_dish(client, **RICE)
+    dal = await add_dish(client, **DAL)
+    assert rice["times_eaten"] == 0
+    assert rice["last_eaten_at"] is None
+
+    await log_meal(client, "2026-10-01T12:00:00Z", {**RICE, "dish_id": rice["id"]})
+    meal = await log_meal(
+        client,
+        "2026-10-03T12:00:00Z",
+        {**RICE, "dish_id": rice["id"], "servings": 2},
+        {**DAL, "dish_id": dal["id"]},
+    )
+    assert [i["dish_id"] for i in meal["items"]] == [rice["id"], dal["id"]]
+    # A dish typed in without the library isn't linked to anything.
+    await log_meal(client, "2026-10-05T12:00:00Z", {"name": "Rice"})
+
+    usage = {
+        d["name"]: (d["times_eaten"], d["last_eaten_at"])
+        for d in (await client.get("/library/dishes")).json()
+    }
+    assert usage == {"Rice": (2, "2026-10-03T12:00:00Z"), "dal": (1, "2026-10-03T12:00:00Z")}
+
+    patched = await client.patch(f"/library/dishes/{rice['id']}", json={"calories": 190})
+    assert patched.json()["times_eaten"] == 2
+
+    # Deleting a dish keeps the meals that used it, without the link.
+    assert (await client.delete(f"/library/dishes/{dal['id']}")).status_code == 204
+    kept = (await client.get(f"/meals/{meal['id']}")).json()
+    assert [(i["name"], i["dish_id"]) for i in kept["items"]] == [
+        ("Rice", rice["id"]),
+        ("dal", None),
+    ]
+
+
+async def test_meal_items_only_link_to_your_own_dishes(client, anon_client, google_claims):
+    rice = await add_dish(client, **RICE)
+    google_claims.update(sub="google-other")
+    other = (await anon_client.post("/auth/google", json={"id_token": "good-token"})).json()
+    headers = {"Authorization": f"Bearer {other['access_token']}"}
+    resp = await anon_client.post(
+        "/meals",
+        json={"meal_type": "lunch", "items": [{**RICE, "dish_id": rice["id"]}]},
+        headers=headers,
+    )
+    # Accepted (the meal keeps its copy of the dish), but not linked to someone else's dish.
+    assert resp.status_code == 201
+    assert resp.json()["items"][0]["dish_id"] is None
+    resp = await client.get("/library/dishes")
+    assert resp.json()[0]["times_eaten"] == 0

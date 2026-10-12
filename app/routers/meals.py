@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.auth import CurrentUser, Session
-from app.models import MealLog, MealLogItem, User, utcnow
+from app.models import Dish, MealLog, MealLogItem, User, utcnow
 from app.schemas import MealIn, MealItemIn, MealOut, MealPatch
 from app.timeutil import day_bounds, local_today
 
@@ -21,8 +21,23 @@ async def _get_owned(db: Session, user: User, meal_id: int) -> MealLog:
     return meal
 
 
-def _items(items: list[MealItemIn]) -> list[MealLogItem]:
-    return [MealLogItem(position=i, **item.model_dump()) for i, item in enumerate(items)]
+async def _items(db: Session, user: User, items: list[MealItemIn]) -> list[MealLogItem]:
+    ids = {item.dish_id for item in items if item.dish_id is not None}
+    owned = (
+        set(await db.scalars(select(Dish.id).where(Dish.user_id == user.id, Dish.id.in_(ids))))
+        if ids
+        else set()
+    )
+    # A dish deleted (or never synced) since the meal was put together just loses its link:
+    # the meal keeps its copy of the dish, and an offline write isn't rejected over it.
+    return [
+        MealLogItem(
+            position=i,
+            **item.model_dump(exclude={"dish_id"}),
+            dish_id=item.dish_id if item.dish_id in owned else None,
+        )
+        for i, item in enumerate(items)
+    ]
 
 
 async def meals_between(db: Session, user: User, start: datetime, end: datetime) -> list[MealLog]:
@@ -50,7 +65,7 @@ async def create_meal(body: MealIn, user: CurrentUser, db: Session) -> MealOut:
         name=body.name,
         meal_type=body.meal_type,
         notes=body.notes,
-        items=_items(body.items),
+        items=await _items(db, user, body.items),
     )
     db.add(meal)
     await db.commit()
@@ -69,7 +84,7 @@ async def patch_meal(meal_id: int, body: MealPatch, user: CurrentUser, db: Sessi
         value = getattr(body, field)
         if field in _REQUIRED and value is None:
             continue
-        setattr(meal, field, _items(value) if field == "items" else value)
+        setattr(meal, field, await _items(db, user, value) if field == "items" else value)
     await db.commit()
     return MealOut.model_validate(meal)
 

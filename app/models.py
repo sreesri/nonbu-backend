@@ -215,6 +215,11 @@ class MealLogItem(NutritionMixin, Base):
         ForeignKey("meal_logs.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # The library dish this was copied from. Only counts how often and how recently each dish is
+    # eaten; the copy above is what the meal shows.
+    dish_id: Mapped[int | None] = mapped_column(
+        ForeignKey("dishes.id", ondelete="SET NULL"), index=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     quantity: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(32))
