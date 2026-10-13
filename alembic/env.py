@@ -1,7 +1,7 @@
 import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -21,6 +21,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 # "%" is escaped because the config parser treats it as interpolation (URL-encoded passwords).
 config.set_main_option("sqlalchemy.url", get_settings().async_database_url.replace("%", "%%"))
+
+# Any constant works; it only has to be the same for every service migrating this database.
+MIGRATION_LOCK_ID = 7_310_244
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -68,6 +71,11 @@ def do_run_migrations(connection: Connection) -> None:
     )
 
     with context.begin_transaction():
+        if connection.dialect.name == "postgresql":
+            # Every deploy runs migrations on start. If two services share the database and start
+            # together, the second waits here, then reads the version the first committed and has
+            # nothing to do, instead of re-running the same migration and failing to boot.
+            connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": MIGRATION_LOCK_ID})
         context.run_migrations()
 
 
